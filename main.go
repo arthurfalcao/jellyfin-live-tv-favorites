@@ -1,15 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"strings"
-	"sync"
 
 	"github.com/joho/godotenv"
 
 	"github.com/arthurfalcao/jellyfin-live-tv-favorites/infra/jellyfin"
+	"github.com/arthurfalcao/jellyfin-live-tv-favorites/usecase"
 )
 
 func init() {
@@ -20,56 +18,17 @@ func init() {
 }
 
 func main() {
-	err := run()
+	client := setupJellyfinClient()
+	useCase := setupFavoriteChannelsUseCase(*client)
+
+	err := useCase.FavoriteChannels([]string{"HBO Max", "Premiere", "SporTV", "TNT", "NBA League Pass"})
 	if err != nil {
-		panic(err)
+		log.Fatalf("error to favorite channels: %v", err)
 	}
 }
 
-func run() error {
-	client := setupJellyfinClient()
-	channels, err := client.GetChannels()
-	if err != nil {
-		return fmt.Errorf("error getting channel: %v", err)
-	}
-
-	wg := sync.WaitGroup{}
-
-	favoriteChannels := []string{"HBO Max", "Premiere", "SporTV", "TNT", "NBA League Pass"}
-
-	for _, channel := range channels {
-		shouldFavorite := false
-		for _, favoriteChannel := range favoriteChannels {
-			if strings.Contains(channel.Name, favoriteChannel) {
-				shouldFavorite = true
-				break
-			}
-		}
-
-		if !shouldFavorite {
-			continue
-		}
-
-		fmt.Printf("channel: %v\n", channel)
-
-		if channel.UserData.IsFavorite {
-			continue
-		}
-
-		wg.Add(1)
-
-		go func(channelID string, wg *sync.WaitGroup) {
-			defer wg.Done()
-			err := client.MarkFavoriteItem(channelID)
-			if err != nil {
-				fmt.Printf("error marking favorite item: %v", err)
-			}
-		}(channel.ID, &wg)
-	}
-
-	wg.Wait()
-
-	return nil
+func setupFavoriteChannelsUseCase(jellyfinClient jellyfin.Client) usecase.UseCaseChannel {
+	return usecase.NewUseCaseChannel(jellyfinClient)
 }
 
 func setupJellyfinClient() *jellyfin.Client {
